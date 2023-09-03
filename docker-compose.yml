@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  tritonserver:
+    container_name: tritonserver
+    image: nvcr.io/nvidia/tritonserver:23.07-py3
+    command: tritonserver --model-repository=/models
+    ports:
+      - 8000:8000
+      - 8001:8001
+      - 8002:8002
+    volumes:
+      - ${LOCAL_WORKSPACE_FOLDER}/model_repository:/models
+    privileged: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+networks:
+  default:
+    name: yolotriton_devcontainer_default
