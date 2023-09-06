@@ -1,0 +1,2 @@
+name: "yolov8"
+platform: "tensorrt_plan"

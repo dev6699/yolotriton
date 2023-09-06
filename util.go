@@ -44,7 +44,7 @@ func SaveImage(img image.Image, filename string) error {
 	return nil
 }
 
-func DrawBoundingBoxes(img image.Image, boxes []Box, lineWidth int) (image.Image, error) {
+func DrawBoundingBoxes(img image.Image, boxes []Box, lineWidth int, fontSize float64) (image.Image, error) {
 
 	// Create a new RGBA image to draw the bounding boxes and text labels on
 	bounds := img.Bounds()
@@ -62,7 +62,7 @@ func DrawBoundingBoxes(img image.Image, boxes []Box, lineWidth int) (image.Image
 		return nil, err
 	}
 	face := truetype.NewFace(ttfFont, &truetype.Options{
-		Size: 36.0,
+		Size: fontSize,
 	})
 
 	// Draw the bounding boxes and text labels on the destination image
