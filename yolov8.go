@@ -2,6 +2,8 @@ package yolotriton
 
 import (
 	"image"
+
+	triton "github.com/dev6699/yolotriton/grpc-client"
 )
 
 type YoloV8 struct {
@@ -15,8 +17,7 @@ type YoloV8 struct {
 func NewYoloV8(modelName string, modelVersion string) Model {
 	return &YoloV8{
 		YoloTritonConfig: YoloTritonConfig{
-			BatchSize:      1,
-			NumChannels:    84,
+			NumClasses:     80,
 			NumObjects:     8400,
 			MinProbability: 0.5,
 			MaxIOU:         0.7,
@@ -32,7 +33,11 @@ func (y *YoloV8) GetConfig() YoloTritonConfig {
 	return y.YoloTritonConfig
 }
 
-func (y *YoloV8) PreProcess(img image.Image, targetWidth uint, targetHeight uint) ([]float32, error) {
+func (y *YoloV8) GetClass(index int) string {
+	return yoloClasses[index]
+}
+
+func (y *YoloV8) PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error) {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 
@@ -43,7 +48,10 @@ func (y *YoloV8) PreProcess(img image.Image, targetWidth uint, targetHeight uint
 	y.metadata.scaleFactorW = float32(width) / float32(targetWidth)
 	y.metadata.scaleFactorH = float32(height) / float32(targetHeight)
 
-	return fp32Contents, nil
+	contents := &triton.InferTensorContents{
+		Fp32Contents: fp32Contents,
+	}
+	return contents, nil
 }
 
 func (y *YoloV8) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
@@ -53,7 +61,7 @@ func (y *YoloV8) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
 	}
 
 	numObjects := y.NumObjects
-	numChannels := y.NumChannels
+	numClasses := y.NumClasses
 
 	boxes := []Box{}
 
@@ -61,7 +69,7 @@ func (y *YoloV8) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
 		classID := 0
 		prob := float32(0.0)
 
-		for col := 0; col < numChannels-4; col++ {
+		for col := 0; col < numClasses; col++ {
 			p := output[numObjects*(col+4)+index]
 			if p > prob {
 				prob = p
@@ -73,16 +81,16 @@ func (y *YoloV8) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
 			continue
 		}
 
-		label := yoloClasses[classID]
-		xc := output[index]
-		yc := output[numObjects+index]
+		label := y.GetClass(classID)
+		x1raw := output[index]
+		y1raw := output[numObjects+index]
 		w := output[2*numObjects+index]
 		h := output[3*numObjects+index]
 
-		x1 := (xc - w/2) * y.metadata.scaleFactorW
-		y1 := (yc - h/2) * y.metadata.scaleFactorH
-		x2 := (xc + w/2) * y.metadata.scaleFactorW
-		y2 := (yc + h/2) * y.metadata.scaleFactorH
+		x1 := (x1raw - w/2) * y.metadata.scaleFactorW
+		y1 := (y1raw - h/2) * y.metadata.scaleFactorH
+		x2 := (x1raw + w/2) * y.metadata.scaleFactorW
+		y2 := (y1raw + h/2) * y.metadata.scaleFactorH
 
 		boxes = append(boxes, Box{
 			X1:          float64(x1),

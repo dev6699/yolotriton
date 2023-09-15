@@ -7,7 +7,7 @@ import (
 	triton "github.com/dev6699/yolotriton/grpc-client"
 )
 
-type YoloNAS struct {
+type YoloNASInt8 struct {
 	YoloTritonConfig
 	metadata struct {
 		xOffset     float32
@@ -16,11 +16,9 @@ type YoloNAS struct {
 	}
 }
 
-func NewYoloNAS(modelName string, modelVersion string) Model {
-	return &YoloNAS{
+func NewYoloNASInt8(modelName string, modelVersion string) Model {
+	return &YoloNASInt8{
 		YoloTritonConfig: YoloTritonConfig{
-			NumClasses:     80,
-			NumObjects:     8400,
 			MinProbability: 0.5,
 			MaxIOU:         0.7,
 			ModelName:      modelName,
@@ -31,19 +29,18 @@ func NewYoloNAS(modelName string, modelVersion string) Model {
 
 var _ Model = &YoloNAS{}
 
-func (y *YoloNAS) GetConfig() YoloTritonConfig {
+func (y *YoloNASInt8) GetConfig() YoloTritonConfig {
 	return y.YoloTritonConfig
 }
 
-func (y *YoloNAS) GetClass(index int) string {
+func (y *YoloNASInt8) GetClass(index int) string {
 	return yoloClasses[index]
 }
 
-func (y *YoloNAS) PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error) {
+func (y *YoloNASInt8) PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error) {
 	height := img.Bounds().Dy()
 	width := img.Bounds().Dx()
 
-	// https://github.com/Deci-AI/super-gradients/blob/master/src/super_gradients/training/processing/processing.py#L547
 	scaleFactor := math.Min(float64(636)/float64(height), float64(636)/float64(width))
 	if scaleFactor != 1.0 {
 		newHeight := uint(math.Round(float64(height) * scaleFactor))
@@ -52,21 +49,20 @@ func (y *YoloNAS) PreProcess(img image.Image, targetWidth uint, targetHeight uin
 	}
 
 	paddedImage, xOffset, yOffset := padImageToCenterWithGray(img, int(targetWidth), int(targetHeight), 114)
-
-	fp32Contents := imageToFloat32Slice(paddedImage)
+	uint32Contents := imageToUint32Slice(paddedImage)
 
 	y.metadata.xOffset = float32(xOffset)
 	y.metadata.yOffset = float32(yOffset)
 	y.metadata.scaleFactor = float32(scaleFactor)
 
 	contents := &triton.InferTensorContents{
-		Fp32Contents: fp32Contents,
+		UintContents: uint32Contents,
 	}
 	return contents, nil
 }
 
-func (y *YoloNAS) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
-	predScores, err := bytesToFloat32Slice(rawOutputContents[0])
+func (y *YoloNASInt8) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
+	numPreds, err := bytesToInt32Slice(rawOutputContents[0])
 	if err != nil {
 		return nil, err
 	}
@@ -74,27 +70,26 @@ func (y *YoloNAS) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
 	if err != nil {
 		return nil, err
 	}
+	predScores, err := bytesToFloat32Slice(rawOutputContents[2])
+	if err != nil {
+		return nil, err
+	}
+	predClasses, err := bytesToInt32Slice(rawOutputContents[3])
+	if err != nil {
+		return nil, err
+	}
 
 	boxes := []Box{}
+	detectedObjects := int(numPreds[0])
+	for index := 0; index < detectedObjects; index++ {
 
-	for index := 0; index < y.NumObjects; index++ {
-
-		classID := 0
-		prob := float32(0.0)
-
-		for col := 0; col < y.NumClasses; col++ {
-			p := predScores[index*y.NumClasses+(col)]
-			if p > prob {
-				prob = p
-				classID = col
-			}
-		}
-
+		prob := predScores[index]
 		if prob < y.MinProbability {
 			continue
 		}
 
-		label := y.GetClass(classID)
+		classID := predClasses[index]
+		label := y.GetClass(int(classID))
 		idx := (index * 4)
 		x1raw := predBoxes[idx]
 		y1raw := predBoxes[idx+1]
