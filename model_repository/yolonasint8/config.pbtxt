@@ -1,0 +1,2 @@
+name: "yolonasint8"
+platform: "tensorrt_plan"

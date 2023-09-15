@@ -13,19 +13,20 @@ import (
 type ModelType string
 
 const (
-	ModelTypeYoloV8  ModelType = "yolov8"
-	ModelTypeYoloNAS ModelType = "yolonas"
+	ModelTypeYoloV8      ModelType = "yolov8"
+	ModelTypeYoloNAS     ModelType = "yolonas"
+	ModelTypeYoloNASInt8 ModelType = "yolonasint8"
 )
 
 type Model interface {
 	GetConfig() YoloTritonConfig
-	PreProcess(img image.Image, targetWidth uint, targetHeight uint) ([]float32, error)
+	PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error)
 	PostProcess(rawOutputContents [][]byte) ([]Box, error)
+	GetClass(index int) string
 }
 
 type YoloTritonConfig struct {
-	BatchSize      int
-	NumChannels    int
+	NumClasses     int
 	NumObjects     int
 	ModelName      string
 	ModelVersion   string
@@ -39,17 +40,25 @@ func New(url string, model Model) (*YoloTriton, error) {
 		return nil, err
 	}
 
+	cfg := model.GetConfig()
+	modelMetadata, err := newModelMetadata(conn, cfg.ModelName, cfg.ModelVersion)
+	if err != nil {
+		return nil, err
+	}
+
 	return &YoloTriton{
-		conn:  conn,
-		model: model,
-		cfg:   model.GetConfig(),
+		conn:          conn,
+		model:         model,
+		cfg:           cfg,
+		modelMetadata: modelMetadata,
 	}, nil
 }
 
 type YoloTriton struct {
-	cfg   YoloTritonConfig
-	conn  *grpc.ClientConn
-	model Model
+	model         Model
+	cfg           YoloTritonConfig
+	conn          *grpc.ClientConn
+	modelMetadata *modelMetadata
 }
 
 func (y *YoloTriton) Close() error {
@@ -58,51 +67,14 @@ func (y *YoloTriton) Close() error {
 
 func (y *YoloTriton) Infer(img image.Image) ([]Box, error) {
 
+	inputs, err := y.model.PreProcess(img, y.modelMetadata.inputWidth(), y.modelMetadata.inputHeight())
+	if err != nil {
+		return nil, err
+	}
+
+	modelInferRequest := y.modelMetadata.formInferRequest(inputs)
+
 	client := triton.NewGRPCInferenceServiceClient(y.conn)
-
-	metaResponse, err := ModelMetadataRequest(client, y.cfg.ModelName, y.cfg.ModelVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	modelInferRequest := &triton.ModelInferRequest{
-		ModelName:    y.cfg.ModelName,
-		ModelVersion: y.cfg.ModelVersion,
-	}
-
-	input := metaResponse.Inputs[0]
-	if input.Shape[0] == -1 {
-		input.Shape[0] = 1
-	}
-
-	inputWidth := input.Shape[2]
-	inputHeight := input.Shape[3]
-
-	fp32Contents, err := y.model.PreProcess(img, uint(inputWidth), uint(inputHeight))
-	if err != nil {
-		return nil, err
-	}
-
-	modelInferRequest.Inputs = append(modelInferRequest.Inputs,
-		&triton.ModelInferRequest_InferInputTensor{
-			Name:     input.Name,
-			Datatype: input.Datatype,
-			Shape:    input.Shape,
-			Contents: &triton.InferTensorContents{
-				// Simply assume all are fp32
-				Fp32Contents: fp32Contents,
-			},
-		},
-	)
-
-	for _, o := range metaResponse.Outputs {
-		modelInferRequest.Outputs = append(modelInferRequest.Outputs,
-			&triton.ModelInferRequest_InferRequestedOutputTensor{
-				Name: o.Name,
-			},
-		)
-	}
-
 	inferResponse, err := ModelInferRequest(client, modelInferRequest)
 	if err != nil {
 		return nil, err
@@ -130,4 +102,60 @@ func (y *YoloTriton) Infer(img image.Image) ([]Box, error) {
 	}
 
 	return result, nil
+}
+
+type modelMetadata struct {
+	modelName    string
+	modelVersion string
+	*triton.ModelMetadataResponse
+}
+
+func newModelMetadata(conn *grpc.ClientConn, modelName string, modelVersion string) (*modelMetadata, error) {
+	client := triton.NewGRPCInferenceServiceClient(conn)
+	metaResponse, err := ModelMetadataRequest(client, modelName, modelVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	return &modelMetadata{
+		modelName:             modelName,
+		modelVersion:          modelVersion,
+		ModelMetadataResponse: metaResponse,
+	}, nil
+}
+
+func (m *modelMetadata) inputWidth() uint {
+	return uint(m.Inputs[0].Shape[2])
+}
+
+func (m *modelMetadata) inputHeight() uint {
+	return uint(m.Inputs[0].Shape[3])
+}
+
+func (m *modelMetadata) formInferRequest(contents *triton.InferTensorContents) *triton.ModelInferRequest {
+	input := m.Inputs[0]
+	if input.Shape[0] == -1 {
+		input.Shape[0] = 1
+	}
+
+	outputs := make([]*triton.ModelInferRequest_InferRequestedOutputTensor, len(m.Outputs))
+	for i, o := range m.Outputs {
+		outputs[i] = &triton.ModelInferRequest_InferRequestedOutputTensor{
+			Name: o.Name,
+		}
+	}
+
+	return &triton.ModelInferRequest{
+		ModelName:    m.modelName,
+		ModelVersion: m.modelVersion,
+		Inputs: []*triton.ModelInferRequest_InferInputTensor{
+			{
+				Name:     input.Name,
+				Datatype: input.Datatype,
+				Shape:    input.Shape,
+				Contents: contents,
+			},
+		},
+		Outputs: outputs,
+	}
 }

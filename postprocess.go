@@ -30,6 +30,29 @@ func bytesToFloat32Slice(data []byte) ([]float32, error) {
 	return t, nil
 }
 
+func bytesToInt32Slice(data []byte) ([]int32, error) {
+	t := []int32{}
+
+	// Create a buffer from the input data
+	buffer := bytes.NewReader(data)
+	for {
+		// Read the binary data from the buffer
+		var binaryValue uint32
+		err := binary.Read(buffer, binary.LittleEndian, &binaryValue)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+
+		t = append(t, int32(binaryValue))
+
+	}
+
+	return t, nil
+}
+
 type Box struct {
 	X1          float64
 	Y1          float64
