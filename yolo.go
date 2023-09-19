@@ -22,7 +22,6 @@ type Model interface {
 	GetConfig() YoloTritonConfig
 	PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error)
 	PostProcess(rawOutputContents [][]byte) ([]Box, error)
-	GetClass(index int) string
 }
 
 type YoloTritonConfig struct {
@@ -32,6 +31,7 @@ type YoloTritonConfig struct {
 	ModelVersion   string
 	MinProbability float32
 	MaxIOU         float64
+	Classes        []string
 }
 
 func New(url string, model Model) (*YoloTriton, error) {
