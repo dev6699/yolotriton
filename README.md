@@ -77,6 +77,10 @@ go run cmd/main.go --help
         Name of model being served (Required) (default "yolonas")
   -n int
         Number of benchmark run. (default 1)
+  -o float
+        Intersection over Union (IoU) (default 0.7)
+  -p float
+        Minimum probability (default 0.5)
   -t string
         Type of model. Available options: [yolonas, yolonasint8, yolov8] (default "yolonas")
   -u string

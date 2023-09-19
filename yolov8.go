@@ -14,16 +14,9 @@ type YoloV8 struct {
 	}
 }
 
-func NewYoloV8(modelName string, modelVersion string) Model {
+func NewYoloV8(cfg YoloTritonConfig) Model {
 	return &YoloV8{
-		YoloTritonConfig: YoloTritonConfig{
-			NumClasses:     80,
-			NumObjects:     8400,
-			MinProbability: 0.5,
-			MaxIOU:         0.7,
-			ModelName:      modelName,
-			ModelVersion:   modelVersion,
-		},
+		YoloTritonConfig: cfg,
 	}
 }
 
@@ -31,10 +24,6 @@ var _ Model = &YoloV8{}
 
 func (y *YoloV8) GetConfig() YoloTritonConfig {
 	return y.YoloTritonConfig
-}
-
-func (y *YoloV8) GetClass(index int) string {
-	return yoloClasses[index]
 }
 
 func (y *YoloV8) PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error) {
@@ -81,7 +70,7 @@ func (y *YoloV8) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
 			continue
 		}
 
-		label := y.GetClass(classID)
+		label := y.Classes[classID]
 		x1raw := output[index]
 		y1raw := output[numObjects+index]
 		w := output[2*numObjects+index]

@@ -14,6 +14,8 @@ type Flags struct {
 	ModelName      string
 	ModelVersion   string
 	ModelType      string
+	MinProbability float64
+	MaxIOU         float64
 	URL            string
 	Image          string
 	Benchmark      bool
@@ -25,6 +27,8 @@ func parseFlags() Flags {
 	flag.StringVar(&flags.ModelName, "m", "yolonas", "Name of model being served (Required)")
 	flag.StringVar(&flags.ModelVersion, "x", "", "Version of model. Default: Latest Version")
 	flag.StringVar(&flags.ModelType, "t", "yolonas", "Type of model. Available options: [yolonas, yolonasint8, yolov8]")
+	flag.Float64Var(&flags.MinProbability, "p", 0.5, "Minimum probability")
+	flag.Float64Var(&flags.MaxIOU, "o", 0.7, "Intersection over Union (IoU)")
 	flag.StringVar(&flags.URL, "u", "tritonserver:8001", "Inference Server URL.")
 	flag.StringVar(&flags.Image, "i", "images/1.jpg", "Inference Image.")
 	flag.BoolVar(&flags.Benchmark, "b", false, "Run benchmark.")
@@ -37,14 +41,26 @@ func main() {
 	FLAGS := parseFlags()
 	fmt.Println("FLAGS:", FLAGS)
 
+	cfg := yolotriton.YoloTritonConfig{
+		ModelName:      FLAGS.ModelName,
+		ModelVersion:   FLAGS.ModelVersion,
+		MinProbability: float32(FLAGS.MinProbability),
+		MaxIOU:         FLAGS.MaxIOU,
+		Classes:        yolotriton.YoloClasses,
+	}
+
 	var model yolotriton.Model
 	switch yolotriton.ModelType(FLAGS.ModelType) {
 	case yolotriton.ModelTypeYoloV8:
-		model = yolotriton.NewYoloV8(FLAGS.ModelName, FLAGS.ModelVersion)
+		cfg.NumClasses = 80
+		cfg.NumObjects = 8400
+		model = yolotriton.NewYoloV8(cfg)
 	case yolotriton.ModelTypeYoloNAS:
-		model = yolotriton.NewYoloNAS(FLAGS.ModelName, FLAGS.ModelVersion)
+		cfg.NumClasses = 80
+		cfg.NumObjects = 8400
+		model = yolotriton.NewYoloNAS(cfg)
 	case yolotriton.ModelTypeYoloNASInt8:
-		model = yolotriton.NewYoloNASInt8(FLAGS.ModelName, FLAGS.ModelVersion)
+		model = yolotriton.NewYoloNASInt8(cfg)
 	default:
 		log.Fatalf("Unsupported model: %s. Available options: [yolonas, yolonasint8, yolov8]", FLAGS.ModelType)
 	}
