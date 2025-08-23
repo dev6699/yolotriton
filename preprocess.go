@@ -1,12 +1,14 @@
 package yolotriton
 
 import (
+	"encoding/binary"
 	"image"
 	"image/color"
 	"image/draw"
 	"math"
 
 	"github.com/nfnt/resize"
+	"github.com/x448/float16"
 )
 
 func resizeImage(img image.Image, width, heigth uint) image.Image {
@@ -16,6 +18,38 @@ func resizeImage(img image.Image, width, heigth uint) image.Image {
 func pixelRGBA(c color.Color) (r, g, b, a uint32) {
 	r, g, b, a = c.RGBA()
 	return r >> 8, g >> 8, b >> 8, a >> 8
+}
+
+func imageToFloat16ByteSlice(img image.Image) [][]byte {
+	bounds := img.Bounds()
+	width, height := bounds.Max.X, bounds.Max.Y
+
+	size := width * height
+
+	// FP16 = 2 bytes
+	result := make([]byte, size*3*2)
+
+	// precompute byte offsets
+	rOff := 0
+	gOff := size * 2
+	bOff := size * 4
+
+	idx := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			r8 := float32(uint8(r>>8)) / 255
+			g8 := float32(uint8(g>>8)) / 255
+			b8 := float32(uint8(b>>8)) / 255
+
+			binary.LittleEndian.PutUint16(result[rOff+idx*2:], float16.Fromfloat32(r8).Bits())
+			binary.LittleEndian.PutUint16(result[gOff+idx*2:], float16.Fromfloat32(g8).Bits())
+			binary.LittleEndian.PutUint16(result[bOff+idx*2:], float16.Fromfloat32(b8).Bits())
+			idx++
+		}
+	}
+
+	return [][]byte{result}
 }
 
 func imageToFloat32Slice(img image.Image) []float32 {

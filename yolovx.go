@@ -6,47 +6,65 @@ import (
 	triton "github.com/dev6699/yolotriton/grpc-client"
 )
 
-type YoloV8 struct {
+type Yolo struct {
 	YoloTritonConfig
 	metadata struct {
 		scaleFactorW float32
 		scaleFactorH float32
 	}
+	io16 bool
 }
 
-func NewYoloV8(cfg YoloTritonConfig) Model {
-	return &YoloV8{
+func NewYolo(cfg YoloTritonConfig, io16 bool) Model {
+	return &Yolo{
 		YoloTritonConfig: cfg,
+		io16:             io16,
 	}
 }
 
-var _ Model = &YoloV8{}
+var _ Model = &Yolo{}
 
-func (y *YoloV8) GetConfig() YoloTritonConfig {
+func (y *Yolo) GetConfig() YoloTritonConfig {
 	return y.YoloTritonConfig
 }
 
-func (y *YoloV8) PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error) {
+func (y *Yolo) PreProcess(img image.Image, targetWidth uint, targetHeight uint) (*triton.InferTensorContents, error) {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 
 	preprocessedImg := resizeImage(img, targetWidth, targetHeight)
 
-	fp32Contents := imageToFloat32Slice(preprocessedImg)
-
 	y.metadata.scaleFactorW = float32(width) / float32(targetWidth)
 	y.metadata.scaleFactorH = float32(height) / float32(targetHeight)
 
-	contents := &triton.InferTensorContents{
-		Fp32Contents: fp32Contents,
+	if y.io16 {
+		bytesContents := imageToFloat16ByteSlice(preprocessedImg)
+		contents := &triton.InferTensorContents{
+			BytesContents: bytesContents,
+		}
+		return contents, nil
+	} else {
+		fp32Contents := imageToFloat32Slice(preprocessedImg)
+		contents := &triton.InferTensorContents{
+			Fp32Contents: fp32Contents,
+		}
+		return contents, nil
 	}
-	return contents, nil
 }
 
-func (y *YoloV8) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
-	output, err := bytesToFloat32Slice(rawOutputContents[0])
-	if err != nil {
-		return nil, err
+func (y *Yolo) PostProcess(rawOutputContents [][]byte) ([]Box, error) {
+	var output []float32
+	var err error
+	if y.io16 {
+		output, err = bytesFP16ToFloat32Slice(rawOutputContents[0])
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		output, err = bytesToFloat32Slice(rawOutputContents[0])
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	numObjects := y.NumObjects

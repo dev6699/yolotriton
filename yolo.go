@@ -13,7 +13,8 @@ import (
 type ModelType string
 
 const (
-	ModelTypeYoloV8      ModelType = "yolov8"
+	ModelTypeYoloFP16    ModelType = "yolofp16"
+	ModelTypeYoloFP32    ModelType = "yolofp32"
 	ModelTypeYoloNAS     ModelType = "yolonas"
 	ModelTypeYoloNASInt8 ModelType = "yolonasint8"
 )
@@ -46,7 +47,10 @@ func New(url string, model Model) (*YoloTriton, error) {
 		return nil, err
 	}
 
+	client := triton.NewGRPCInferenceServiceClient(conn)
+
 	return &YoloTriton{
+		client:        client,
 		conn:          conn,
 		model:         model,
 		cfg:           cfg,
@@ -57,6 +61,7 @@ func New(url string, model Model) (*YoloTriton, error) {
 type YoloTriton struct {
 	model         Model
 	cfg           YoloTritonConfig
+	client        triton.GRPCInferenceServiceClient
 	conn          *grpc.ClientConn
 	modelMetadata *modelMetadata
 }
@@ -74,8 +79,7 @@ func (y *YoloTriton) Infer(img image.Image) ([]Box, error) {
 
 	modelInferRequest := y.modelMetadata.formInferRequest(inputs)
 
-	client := triton.NewGRPCInferenceServiceClient(y.conn)
-	inferResponse, err := ModelInferRequest(client, modelInferRequest)
+	inferResponse, err := ModelInferRequest(y.client, modelInferRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -91,10 +95,11 @@ func (y *YoloTriton) Infer(img image.Image) ([]Box, error) {
 
 	result := []Box{}
 	for len(boxes) > 0 {
-		result = append(result, boxes[0])
+		chosen := boxes[0]
+		result = append(result, chosen)
 		tmp := []Box{}
-		for _, box := range boxes {
-			if iou(boxes[0], box) < y.cfg.MaxIOU {
+		for _, box := range boxes[1:] {
+			if iou(chosen, box) < y.cfg.MaxIOU {
 				tmp = append(tmp, box)
 			}
 		}
@@ -145,7 +150,7 @@ func (m *modelMetadata) formInferRequest(contents *triton.InferTensorContents) *
 		}
 	}
 
-	return &triton.ModelInferRequest{
+	req := &triton.ModelInferRequest{
 		ModelName:    m.modelName,
 		ModelVersion: m.modelVersion,
 		Inputs: []*triton.ModelInferRequest_InferInputTensor{
@@ -153,9 +158,16 @@ func (m *modelMetadata) formInferRequest(contents *triton.InferTensorContents) *
 				Name:     input.Name,
 				Datatype: input.Datatype,
 				Shape:    input.Shape,
-				Contents: contents,
 			},
 		},
 		Outputs: outputs,
 	}
+
+	if len(contents.BytesContents) > 0 && input.Datatype == "FP16" {
+		req.RawInputContents = contents.BytesContents
+	} else {
+		req.Inputs[0].Contents = contents
+	}
+
+	return req
 }

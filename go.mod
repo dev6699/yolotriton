@@ -1,6 +1,6 @@
 module github.com/dev6699/yolotriton
 
-go 1.19
+go 1.25
 
 require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/sys v0.11.0 // indirect
 	golang.org/x/text v0.12.0 // indirect

@@ -1,2 +1,2 @@
-name: "yolov8"
+name: "yolov12"
 platform: "tensorrt_plan"

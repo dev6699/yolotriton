@@ -16,7 +16,7 @@
 			"moby": "true"
 		},
 		"ghcr.io/devcontainers/features/go:1": {
-			"version": "1.19"
+			"version": "1.25"
 		}
 	},
 	"privileged": true,

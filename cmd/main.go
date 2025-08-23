@@ -26,7 +26,7 @@ func parseFlags() Flags {
 	var flags Flags
 	flag.StringVar(&flags.ModelName, "m", "yolonas", "Name of model being served (Required)")
 	flag.StringVar(&flags.ModelVersion, "x", "", "Version of model. Default: Latest Version")
-	flag.StringVar(&flags.ModelType, "t", "yolonas", "Type of model. Available options: [yolonas, yolonasint8, yolov8]")
+	flag.StringVar(&flags.ModelType, "t", "yolonas", "Type of model. Available options: [yolonas, yolonasint8, yolofp16, yolofp32]")
 	flag.Float64Var(&flags.MinProbability, "p", 0.5, "Minimum probability")
 	flag.Float64Var(&flags.MaxIOU, "o", 0.7, "Intersection over Union (IoU)")
 	flag.StringVar(&flags.URL, "u", "tritonserver:8001", "Inference Server URL.")
@@ -51,16 +51,24 @@ func main() {
 
 	var model yolotriton.Model
 	switch yolotriton.ModelType(FLAGS.ModelType) {
-	case yolotriton.ModelTypeYoloV8:
+	case yolotriton.ModelTypeYoloFP16:
 		cfg.NumClasses = 80
 		cfg.NumObjects = 8400
-		model = yolotriton.NewYoloV8(cfg)
+		model = yolotriton.NewYolo(cfg, true)
+
+	case yolotriton.ModelTypeYoloFP32:
+		cfg.NumClasses = 80
+		cfg.NumObjects = 8400
+		model = yolotriton.NewYolo(cfg, false)
+
 	case yolotriton.ModelTypeYoloNAS:
 		cfg.NumClasses = 80
 		cfg.NumObjects = 8400
 		model = yolotriton.NewYoloNAS(cfg)
+
 	case yolotriton.ModelTypeYoloNASInt8:
 		model = yolotriton.NewYoloNASInt8(cfg)
+
 	default:
 		log.Fatalf("Unsupported model: %s. Available options: [yolonas, yolonasint8, yolov8]", FLAGS.ModelType)
 	}

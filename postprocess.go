@@ -3,9 +3,28 @@ package yolotriton
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"math"
+
+	"github.com/x448/float16"
 )
+
+func bytesFP16ToFloat32Slice(data []byte) ([]float32, error) {
+	if len(data)%2 != 0 {
+		return nil, errors.New("byte slice length must be divisible by 2 for FP16")
+	}
+
+	count := len(data) / 2
+	floats := make([]float32, count)
+
+	for i := 0; i < count; i++ {
+		bits := uint16(data[i*2]) | uint16(data[i*2+1])<<8
+		floats[i] = float16.Frombits(bits).Float32()
+	}
+
+	return floats, nil
+}
 
 func bytesToFloat32Slice(data []byte) ([]float32, error) {
 	t := []float32{}
