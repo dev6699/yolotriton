@@ -1,3 +1,8 @@
+# Release 0.5.0
+## Major Features and Improvements
+* Added support for YOLO models with FP16 inputs and outputs
+* Compatibility extended to ultralytics YOLOv8 through YOLOv12
+
 # Release 0.4.0
 ## Breaking Changes
 * `Model.GetClass` has been removed in favor of new `YoloTritonConfig.Classes`

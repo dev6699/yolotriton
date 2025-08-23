@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/dev6699/yolotriton)](https://goreportcard.com/report/github.com/dev6699/yolotriton)
 [![License](https://img.shields.io/github/license/dev6699/yolotriton)](LICENSE)
 
-Go (Golang) gRPC client for YOLO-NAS, YOLOv8 inference using the Triton Inference Server.
+Go (Golang) gRPC client for YOLO-NAS, YOLO inference using the Triton Inference Server.
 
 ## Installation
 
@@ -14,18 +14,60 @@ Use `go get` to install this package:
 go get github.com/dev6699/yolotriton
 ```
 
-### Get YOLO-NAS, YOLOv8 TensorRT model
-Replace `yolov8m.pt` with your desired model
+## Get YOLO-NAS, YOLO TensorRT model
+### Export of quantized YOLO model
+Install ultralytics
 ```bash
 pip install ultralytics
-yolo export model=yolov8m.pt format=onnx
-trtexec --onnx=yolov8m.onnx --saveEngine=model_repository/yolov8/1/model.plan
+```
+
+NOTE: Replace `yolo12n.pt` with your target model
+```bash
+# Export ONNX format then use trtexec to convert
+yolo export model=yolo12n.pt format=onnx
+trtexec --onnx=yolo12n.onnx --saveEngine=model_repository/yolov12/1/model.plan
+```
+
+NOTE: Inputs/Outputs still remained as `FP32` for compatibility reasons.
+```bash
+# export FP32 TensorRT format directly
+yolo export model=yolo12n.pt format=engine
+
+# export quantized FP16 TensorRT
+yolo export model=yolo12n.pt format=engine half
+
+# export quantized INT8 TensorRT
+yolo export model=yolo12n.pt format=engine int8
 ```
 
 References:
 1. https://docs.nvidia.com/deeplearning/tensorrt/quick-start-guide/index.html
-2. https://docs.ultralytics.com/modes/export/
+2. https://docs.ultralytics.com/modes/export/#export-formats
 3. https://github.com/NVIDIA/TensorRT/tree/master/samples/trtexec
+
+Troubleshooting:
+1. Use `trtexec --loadEngine=yolo12n.engine` to check the engine.
+2. Failed to load the exported engine, check [Related issue](https://github.com/ultralytics/ultralytics/issues/4597#issuecomment-1694948850)
+
+### Convert to FP16 with [onnxconverter_common](https://github.com/microsoft/onnxconverter-common)
+NOTE: set `keep_io_types=True` to keep inputs/outputs as FP32, else it will be changed to FP16
+
+```python
+import onnx
+from onnxconverter_common import float16
+
+# Load original model
+model = onnx.load("model.onnx")
+
+model_fp16 = float16.convert_float_to_float16(
+    model,
+    # keep_io_types=True,
+    node_block_list=[]
+)
+
+# Save
+onnx.save(model_fp16, "model_fp16.onnx")
+```
 
 ### Export of quantized YOLO-NAS INT8 model
 1. Export quantized onnx model
@@ -55,14 +97,15 @@ trtexec --onnx=yolo_nas_s_int8.onnx --saveEngine=yolo_nas_s_int8.plan --int8
 References:
 1. https://github.com/Deci-AI/super-gradients/blob/b5eb12ccd021ca77e947bf2dde7e84a75489e7ed/documentation/source/models_export.md
 
-### Start trinton inference server
+
+## Start triton inference server
 ```bash
 docker compose up tritonserver
 ```
 References:
 1. https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/user_guide/model_repository.html
 
-### Sample usage
+## Sample usage
 Check [cmd/main.go](cmd/main.go) for more details.
 
 - For help
@@ -82,7 +125,7 @@ go run cmd/main.go --help
   -p float
         Minimum probability (default 0.5)
   -t string
-        Type of model. Available options: [yolonas, yolonasint8, yolov8] (default "yolonas")
+        Type of model. Available options: [yolonas, yolonasint8, yolofp16, yolofp32] (default "yolonas")
   -u string
         Inference Server URL. (default "tritonserver:8001")
   -x string
@@ -131,7 +174,7 @@ Avg processing time: 76.93539ms
 ```
 
 
-### Results
+## Results
 
 | Input                       | Ouput                                   |
 | --------------------------- | --------------------------------------- |
